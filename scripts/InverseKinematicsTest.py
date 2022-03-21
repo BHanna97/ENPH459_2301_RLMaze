@@ -22,6 +22,7 @@ arm = 8
 leg = 8
 servo_orientations = [0, 120, 240]  # even distribution of 3 angles wrt x
 h0 = leg  # platform height when all servos lay flat
+servo_0 = np.pi*45/180 # servo angle that has the arms level with the x-y plane
 
 base_anchors = [[r0, 0, 0],
                 [-1*r0*np.sin(np.pi/6), r0*np.cos(np.pi/6), 0],
@@ -36,7 +37,7 @@ platform_anchors = [[(r0 + arm), 0, 0],
 # angles1 = protostew.orient(0, 0)
 # angles2 = protostew.orient(-4*np.pi/180, 0)
 
-theseus = Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0)
+theseus = Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0, )
 angles1 = theseus.orient(0, 0)
 angles2 = theseus.orient(10, 0)
 
