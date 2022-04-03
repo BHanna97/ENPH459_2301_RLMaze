@@ -38,10 +38,11 @@ class ImageProcessor(threading.Thread):
                     #There may be more conversions than necessary here, but I couldn't find
                     #any way to do this more directly
                     # 'L' for grayscale 'rbg' (?) for color
-                    self.pil_image = PIL.Image.open(self.stream).convert('L')
+                    self.pil_image = PIL.Image.open(self.stream).convert('RGB')
                     self.ocv_image = np.array(self.pil_image)
+                    self.ocv_image = self.ocv_image[:,:,::-1].copy()
                     # 'mono8' for grayscale 'bgr8' for color
-                    self.image_message = self.bridge.cv2_to_imgmsg(self.ocv_image, encoding='mono8')
+                    self.image_message = self.bridge.cv2_to_imgmsg(self.ocv_image, encoding='bgr8')
                     self.pub.publish(self.image_message)
 
 
@@ -58,7 +59,6 @@ class ImageProcessor(threading.Thread):
                     if rospy.is_shutdown():
                         print("ending..")
                         self.owner.done=True
-                        self.flush() #This causes many errors on exiting, but at least it exits (most of the time)
                         
 class ProcessOutput(object):
     def __init__(self):
@@ -106,11 +106,12 @@ class ProcessOutput(object):
             proc.join()
 
 with picamera.PiCamera(resolution=(720,720), framerate = 10) as camera:
-    camera.color_effects = (128,128)
+    #camera.color_effects = (128,128) #uncomment for black and white
     #camera.start_preview()
     #time.sleep(2)
     output = ProcessOutput()
     camera.start_recording(output, format='mjpeg')
     while not output.done:
         camera.wait_recording(1)
+    output.flush()
     camera.stop_recording()
