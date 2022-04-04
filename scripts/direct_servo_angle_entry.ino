@@ -35,7 +35,10 @@ void setup() {
   digitalWrite(dir, HIGH);
   //Home
   pinMode(homesw, INPUT_PULLUP); 
-
+      servoA.write(40); //HOMESERVOS
+      servoB.write(40);
+      servoC.write(40);
+      
  homely();
 }
 
@@ -53,7 +56,7 @@ if(String(command) == "rec"){recover();}
 
       token = strtok(NULL, ",");
       signalC = String(token).toInt();
-
+      
       servoA.write(signalA);
       servoB.write(signalB);
       servoC.write(signalC);
