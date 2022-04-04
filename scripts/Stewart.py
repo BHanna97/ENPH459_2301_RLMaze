@@ -51,9 +51,9 @@ class Stewart:
                             [0, np.cos(roll), -1*np.sin(roll)],
                             [-1*np.sin(pitch), np.cos(pitch)*np.sin(roll), np.cos(pitch)*np.cos(roll)]])
 
-        q1 = np.array([0, 0, self.h0]) + rotator@self.p1
-        q2 = np.array([0, 0, self.h0]) + rotator@self.p2
-        q3 = np.array([0, 0, self.h0]) + rotator@self.p3
+        q1 = np.array([0, 0, self.h0]) + np.matmul(rotator,self.p1)
+        q2 = np.array([0, 0, self.h0]) + np.matmul(rotator,self.p2)
+        q3 = np.array([0, 0, self.h0]) + np.matmul(rotator,self.p3)
 
         leg1 = q1 - self.b1
         leg2 = q2 - self.b2

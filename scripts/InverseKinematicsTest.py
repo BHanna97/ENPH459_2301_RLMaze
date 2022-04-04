@@ -37,9 +37,9 @@ platform_anchors = [[(r0 + arm), 0, 0],
 # angles1 = protostew.orient(0, 0)
 # angles2 = protostew.orient(-4*np.pi/180, 0)
 
-theseus = Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0, )
+theseus = Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0, [50,50,50])
 angles1 = theseus.orient(0, 0)
-angles2 = theseus.orient(10, 0)
+angles2 = theseus.orient(0, 10)
 
 print("flat: " + str(angles1))
 print("tilt: " + str(angles2))
