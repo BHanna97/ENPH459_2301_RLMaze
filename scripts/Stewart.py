@@ -72,9 +72,9 @@ class Stewart:
         L2 = np.dot(leg2, leg2) - k
         L3 = np.dot(leg3, leg3) - k
 
-        alpha1 = 180/np.pi*(np.arcsin(L1/np.sqrt(M1**2 + N1**2)) + np.arctan(M1/N1)) - self.servo_0
-        alpha2 = 180/np.pi*(np.arcsin(L2/np.sqrt(M2**2 + N2**2)) + np.arctan(M2/N2)) - self.servo_0
-        alpha3 = 180/np.pi*(np.arcsin(L3/np.sqrt(M3**2 + N3**2)) + np.arctan(M3/N3)) - self.servo_0
+        alpha1 = 180/np.pi*(np.arcsin(L1/np.sqrt(M1**2 + N1**2)) + np.arctan(M1/N1)) - self.servo_0[0]
+        alpha2 = 180/np.pi*(np.arcsin(L2/np.sqrt(M2**2 + N2**2)) + np.arctan(M2/N2)) - self.servo_0[1]
+        alpha3 = 180/np.pi*(np.arcsin(L3/np.sqrt(M3**2 + N3**2)) + np.arctan(M3/N3)) - self.servo_0[2]
 
         return alpha1, alpha2, alpha3
 

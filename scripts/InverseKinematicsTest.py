@@ -39,7 +39,9 @@ platform_anchors = [[(r0 + arm), 0, 0],
 
 theseus = Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0, [50,50,50])
 angles1 = theseus.orient(0, 0)
-angles2 = theseus.orient(0, 10)
+angles2 = theseus.orient(10, 0)
+angles3 = theseus.orient(0, 10)
 
 print("flat: " + str(angles1))
-print("tilt: " + str(angles2))
+print("tilt1: " + str(angles2))
+print("tilt2: " + str(angles3))

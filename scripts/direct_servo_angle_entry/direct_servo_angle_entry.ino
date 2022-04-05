@@ -136,7 +136,14 @@ void parseData() {      // split the data into its parts
 
 void recover(){
   digitalWrite(enbl, LOW); //ENABLE STEPPER
-  delay(10000); //wait for ball to get to elevator
+
+  delay(500);
+  //bring platform into reset position
+  servoA.write(40);
+  servoB.write(55);
+  servoC.write(40);
+
+  delay(5500); //wait for ball to get to elevator
   //step
 int  steps = 0 ;
   while(steps <= 630){
