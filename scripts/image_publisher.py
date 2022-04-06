@@ -105,7 +105,7 @@ class ProcessOutput(object):
             proc.terminated = True
             proc.join()
 
-with picamera.PiCamera(resolution=(720,720), framerate = 2) as camera:
+with picamera.PiCamera(resolution=(720,720), framerate = 15) as camera:
     #camera.color_effects = (128,128) #uncomment for black and white
     #camera.start_preview()
     #time.sleep(2)
