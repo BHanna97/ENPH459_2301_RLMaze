@@ -12,7 +12,7 @@ from std_msgs.msg import Bool
 from cv_bridge import CvBridge, CvBridgeError
 
 import numpy as np
-from datetime import datetime
+import time
 from collections import deque
 import serial
 
@@ -26,11 +26,13 @@ def img_callback(data):
     #cv2.imshow('cv_img',cv_image)
     #print("Image recieved")
     #cv2.imwrite('test.jpg', cv_image)
+    #start_time = time.time()
     get_command(cv_image)
+    #rospy.loginfo("processed frame in " + str(time.time() - start_time))
 
 def target_callback(point):
     global target_point
-    target_point = (point.x, point.y)
+    target_point = np.array([point.x, point.y], np.single)
     rospy.loginfo("target aquired!")
 
 #TODO:take in an image as a numpy array. If the ball cannot be found on the platform,
@@ -41,37 +43,44 @@ def get_command(raw_image):
     global target_point
     global rotation_matrix
     global nlostframes
-    target_point = np.array([300,100]) #arbitrary default 
     platform_image = crop_platform(raw_image)	
     ball_found, ball_loc = track_ball(platform_image)
 
     if nlostframes < 30: #global variable set by track_ball
     
         if ball_found:
-            past_errs.append(target_point-ball_loc)
-    
-        p_err=target_point-past_errs[-1]
-        d_err=[0,0]
+            past_errs.append((target_point-ball_loc))
+        #rospy.loginfo(past_errs)
+        #rospy.loginfo(past_errs[-1])
+        p_err=past_errs[-1]
+        i_err=sum(past_errs)
+        d_err=np.array([0,0], np.single)
         last_err=None
         for err in past_errs:
             if last_err is not None:
                 d_err += d_err-last_err
             last_err=err
-        #I won't worry about integral error for now
-        p_gain = [0.02,0.001]
-        d_gain= [0,0]
-        rospy.loginfo(p_err)
-        platform_angle = p_gain*p_err + d_gain*d_err
+        p_gain = np.array([0.008,0.008], dtype=np.single)
+        d_gain = np.array([0.0003,0.0003], dtype=np.single)
+        i_gain = np.array([0.00015,0.00015], dtype=np.single) 
+        #rospy.loginfo("proportional error:" +str(p_err))
+        #rospy.loginfo("target:" + str(target_point))
+        platform_angle = p_gain*p_err + d_gain*d_err + i_gain*i_err
         #rospy.loginfo(platform_angle)
+        platform_angle = [platform_angle[0],-platform_angle[1]]
         rotated_angles = np.matmul(rotation_matrix,platform_angle)
-        angles=theseus.orient(rotated_angles[0],rotated_angles[1])
-        sendCommand("F", angles)
+        #rospy.loginfo("rotated angles:" + str(rotated_angles))
+        servo_angles=theseus.orient(rotated_angles[0],rotated_angles[1])
+        #rospy.loginfo("servo angles" + str(servo_angles))
+        sendCommand("F", servo_angles)
 
-    else: #the ball has been lost for a long time
+    elif nlostframes == 30: #not robust to failed recoveries
+        past_errs.clear()
         sendCommand("T",[-1,-1,-1])
 
 def sendCommand(resetstr, angles):
-    angles_set = np.clip(angles, 0, 65)
+    angles_int = np.rint(angles)
+    angles_set = np.clip(angles_int, 0, 65)
     #rospy.loginfo(angles_set)
     cmd = "<" + resetstr + "," + str(angles_set[0]) + "," +str(angles_set[1]) +"," + str(angles_set[2]) + ">"
     #rospy.loginfo(cmd.encode())
@@ -87,41 +96,41 @@ def track_ball(platform_image):
     global ball_on_platform
     global ball_loc
     global nlostframes
-    if not ball_on_platform: #The ball was not found in the previous frame
-        ball_found,ball_loc = identify_ball(platform_image)
-        if ball_found:
-            ball_on_platform=True
-            rospy.loginfo('ball found!')
-            nlostframes = 0
-        else:
-            nlostframes += 1
-    else: #we know where the ball is, we don't need to search the whole platform
-        search_rad=100
-        (x,y,w,h)= [int(v) for v in ball_loc]
-        local_image = platform_image[y-search_rad:y+search_rad,x-search_rad:x+search_rad]
-        ball_found, ball_loc = identify_ball(local_image)
-        ball_loc = [ball_loc[0]+x-search_rad,ball_loc[1]+y-search_rad,ball_loc[2],ball_loc[3]]
-        if not ball_found:
-            ball_on_platform=False
-            rospy.loginfo("ball lost!")
+    global last_image
+    
+    ball_found = False
+    motion_detected = False
 
-    (x,y,w,h)= [int(v) for v in ball_loc]
-    #debug
-    tracked=cv2.rectangle(platform_image, (x,y), (x+w, y+h), (0,255,0), 2)
-    cv2.imshow('box',tracked)
-    cv2.imwrite('processed_image.jpg',tracked)
-    cv2.waitKey(1)
+    motion_detected, ball_loc = identify_motion(platform_image)
 
-    if ball_found:
-        return True, np.array([x+w/2,y+h/2]) 
-    else:
+    if not motion_detected: #maybe the ball is stationary
+        ball_found, ball_loc = identify_ball(platform_image)
+
+    if (not ball_found) and (not motion_detected):
+        ball_on_platform=False
+        rospy.loginfo('no ball found for ' + str(nlostframes) + ' frames')
+        nlostframes += 1
+        last_image = None
         return False, None
+    else:
+        #rospy.loginfo('ball found' + str(nlostframes))
+        nlostframes = 0
+        (x,y,w,h)= [int(v) for v in ball_loc]
+        #debug
+        tracked=cv2.rectangle(platform_image, (x,y), (x+w, y+h), (0,255,0), 2)
+        #cv2.imshow('box',tracked)
+        #cv2.imwrite('processed_image.jpg',tracked)
+        cv2.waitKey(1)
+
+        last_image = platform_image
+        return True, np.array([x+w/2,y+h/2], np.single) 
+
 
 def identify_ball(image):
     #may want to gaussian blur here
     #TODO:tune
     _,thresh_high = cv2.threshold(image, 235,255, cv2.THRESH_BINARY)
-    _,thresh_low = cv2.threshold(image, 115,255, cv2.THRESH_BINARY_INV)
+    _,thresh_low = cv2.threshold(image, 145,255, cv2.THRESH_BINARY_INV)
 
     kernel = np.ones((5,5), np.uint8)
     try:
@@ -133,7 +142,7 @@ def identify_ball(image):
         #cv2.imshow('undilated', thresh_high)
         #cv2.imshow('darkest', thresh_low)
     except:
-        rospy.loginfo('thresh blanked')
+        rospy.loginfo('no sufficiently bright/dark spots found')
         ball_mask=0
 
 
@@ -147,6 +156,28 @@ def identify_ball(image):
     else:
         return False, [-1,-1,-1,-1]
 
+def identify_motion(image):
+    global last_image
+    global maze_mask_eroded
+    
+    #rospy.loginfo('using motion')
+    image = cv2.blur(image, (3,3))
+
+    if last_image is None:
+        last_image = image
+        return(False, [-1,-1,-1,-1])
+
+    delta = cv2.absdiff(image,last_image)
+    _, delta_thresh = cv2.threshold(delta, 50, 255, cv2.THRESH_BINARY)
+    delta_thresh_masked = np.bitwise_and(delta_thresh, maze_mask_eroded)
+    delta_thresh_masked_eroded = cv2.erode(delta_thresh_masked, np.ones((5,5), np.uint8))
+    #cv2.imshow('difft',delta_thresh_masked_eroded)
+    #cv2.waitKey(1)
+    last_image = image
+    if (np.sum(delta_thresh_masked_eroded) > 300): #TODO:tune
+        return(True, cv2.boundingRect(delta_thresh_masked_eroded))
+    else:
+        return(False, [-1,-1,-1,-1])
 
 def crop_platform(image):
     global maze_mask
@@ -228,7 +259,7 @@ def init_stewart():
     
     
     
-    return Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0,[40,36,42])
+    return Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0,[40,35,42])
 
 
 def listener():
@@ -248,19 +279,25 @@ if __name__ == '__main__':
     arduino = serial.Serial("/dev/ttyUSB0", 9600, timeout=1)
 
     global rotation_matrix
-    theta = np.pi/3 #angle to align image coordinates with platform roll/pitch
+    theta = np.pi/3 #+np.pi #angle to align image coordinates with platform roll/pitch
     rotation_matrix=[[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]]
     
     global prev_marker_centroids #initialiation to rough locations
     prev_marker_centroids = [[50,400],[425,100],[650,325],[325,625]]
 
+    global last_image
+    last_image = None
+    global target_point 
+    target_point = np.array([300,100], np.single) #arbitrary default 
     global ball_on_platform
     ball_on_platform = False
     global nlostframes
     nlostframes = 0 
     global maze_mask
     maze_mask=cv2.imread('/home/pi/ros_catkin_ws/src/project_theseus/scripts/straightened_platform_mask.jpg' ,cv2.IMREAD_GRAYSCALE)
+    global maze_mask_eroded
+    maze_mask_eroded = cv2.erode(maze_mask,np.ones((5,5), np.uint8), iterations = 6) #TODO: tune
     global past_errs
-    past_errs = deque(np.float32([0,0]),5)
+    past_errs = deque(np.float32([0,0]),3)
     global target
     listener()
