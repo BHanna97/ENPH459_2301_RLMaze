@@ -25,6 +25,7 @@ class ImageProcessor(threading.Thread):
         self.start()
         
         self.pub = rospy.Publisher('picam_image', Image, queue_size=1)
+        rospy.loginfo('frame published')
         rospy.init_node('picam_publisher', anonymous=True)
         self.bridge = CvBridge()
 

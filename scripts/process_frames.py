@@ -34,6 +34,7 @@ def target_callback(point):
     global target_point
     target_point = np.array([point.x, point.y], np.single)
     rospy.loginfo("target aquired!")
+    rospy.loginfo(target_point)
 
 #TODO:take in an image as a numpy array. If the ball cannot be found on the platform,
 #set ball_on_platform to 0, and send an error value to target_platform_angle.
@@ -43,38 +44,44 @@ def get_command(raw_image):
     global target_point
     global rotation_matrix
     global nlostframes
+
+    p_gain = np.array([0.0100,0.0100], dtype=np.single)
+    d_gain = np.array([0.0006,0.0006], dtype=np.single)
+    dd_gain = np.array([0.0000,0.0000], dtype=np.single)
+    i_gain = np.array([0.00001,0.00001], dtype=np.single) 
+
     platform_image = crop_platform(raw_image)	
     ball_found, ball_loc = track_ball(platform_image)
 
     if nlostframes < 30: #global variable set by track_ball
-    
+        #rospy.loginfo("ball location:" + str(ball_loc))
         if ball_found:
             past_errs.append((target_point-ball_loc))
         #rospy.loginfo(past_errs)
         #rospy.loginfo(past_errs[-1])
         p_err=past_errs[-1]
-        i_err=sum(past_errs)
-        d_err=np.array([0,0], np.single)
-        last_err=None
-        for err in past_errs:
-            if last_err is not None:
-                d_err += d_err-last_err
-            last_err=err
-        p_gain = np.array([0.008,0.008], dtype=np.single)
-        d_gain = np.array([0.0003,0.0003], dtype=np.single)
-        i_gain = np.array([0.00015,0.00015], dtype=np.single) 
-        #rospy.loginfo("proportional error:" +str(p_err))
+        i_err=sum(past_errs)/len(past_errs)
+        try:
+            d_err=past_errs[-1]-past_errs[-2]
+        except (IndexError):
+            d_err = np.array([0,0], np.single)
+
+        try:
+           dd_err=past_errs[-1]-2*past_errs[-2]+past_errs[-3]
+        except (IndexError):
+            d_err = np.array([0,0], np.single)
         #rospy.loginfo("target:" + str(target_point))
         platform_angle = p_gain*p_err + d_gain*d_err + i_gain*i_err
         #rospy.loginfo(platform_angle)
         platform_angle = [platform_angle[0],-platform_angle[1]]
         rotated_angles = np.matmul(rotation_matrix,platform_angle)
         #rospy.loginfo("rotated angles:" + str(rotated_angles))
+        rotated_angles = np.clip(rotated_angles, -5,5) #Stewart.py will output Nans if we exceed this, although more range can be gained
         servo_angles=theseus.orient(rotated_angles[0],rotated_angles[1])
         #rospy.loginfo("servo angles" + str(servo_angles))
         sendCommand("F", servo_angles)
 
-    elif nlostframes == 30: #not robust to failed recoveries
+    elif  (nlostframes - 35) % 80 == 0: #first recovery after 35 missed frames, try again after 80
         past_errs.clear()
         sendCommand("T",[-1,-1,-1])
 
@@ -118,18 +125,18 @@ def track_ball(platform_image):
         (x,y,w,h)= [int(v) for v in ball_loc]
         #debug
         tracked=cv2.rectangle(platform_image, (x,y), (x+w, y+h), (0,255,0), 2)
-        #cv2.imshow('box',tracked)
+        cv2.circle(tracked, np.array(target_point, np.uint16), 2, 255, -1) 
+        cv2.imshow('hox',tracked)
+        #rospy.loginfo(np.array(target_point, np.uint16))
         #cv2.imwrite('processed_image.jpg',tracked)
         cv2.waitKey(1)
 
-        last_image = platform_image
         return True, np.array([x+w/2,y+h/2], np.single) 
 
 
 def identify_ball(image):
     #may want to gaussian blur here
-    #TODO:tune
-    _,thresh_high = cv2.threshold(image, 235,255, cv2.THRESH_BINARY)
+    _,thresh_high = cv2.threshold(image, 243,255, cv2.THRESH_BINARY)
     _,thresh_low = cv2.threshold(image, 145,255, cv2.THRESH_BINARY_INV)
 
     kernel = np.ones((5,5), np.uint8)
@@ -138,16 +145,15 @@ def identify_ball(image):
         low_dilated = cv2.dilate(thresh_low,kernel, iterations = 3) #TODO: tune
         ball_mask=cv2.bitwise_and(high_dilated,low_dilated)
 
-        #cv2.imshow('brightest', high_dilated)
-        #cv2.imshow('undilated', thresh_high)
-        #cv2.imshow('darkest', thresh_low)
+       # cv2.imshow('brightest', high_dilated)
+       # cv2.imshow('undilated', thresh_high)
+       # cv2.imshow('darkest', thresh_low)
     except:
-        rospy.loginfo('no sufficiently bright/dark spots found')
+        #rospy.loginfo('no sufficiently bright/dark spots found')
         ball_mask=0
 
-
-    #cv2.imshow('ball_mask', ball_mask)
-    #cv2.waitKey(1)
+   # cv2.imshow('ball_mask', ball_mask)
+   #  cv2.waitKey(1)
 
     #print(np.sum(thresh_eroded))
     if (np.sum(ball_mask) > 2000): #TODO:Tune
@@ -170,13 +176,15 @@ def identify_motion(image):
     delta = cv2.absdiff(image,last_image)
     _, delta_thresh = cv2.threshold(delta, 50, 255, cv2.THRESH_BINARY)
     delta_thresh_masked = np.bitwise_and(delta_thresh, maze_mask_eroded)
-    delta_thresh_masked_eroded = cv2.erode(delta_thresh_masked, np.ones((5,5), np.uint8))
+    delta_thresh_masked_eroded = cv2.erode(delta_thresh_masked, np.ones((7,7), np.uint8))
     #cv2.imshow('difft',delta_thresh_masked_eroded)
     #cv2.waitKey(1)
     last_image = image
     if (np.sum(delta_thresh_masked_eroded) > 300): #TODO:tune
         return(True, cv2.boundingRect(delta_thresh_masked_eroded))
     else:
+     #   rospy.loginfo('no motion')
+
         return(False, [-1,-1,-1,-1])
 
 def crop_platform(image):
@@ -207,7 +215,7 @@ def crop_platform(image):
     #    cv2.waitKey(1)
     
     image_bw = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    ptransform = cv2.getPerspectiveTransform(np.float32(marker_centroids),np.float32([[46,313],[517,43],[670,312],[203,582]]))
+    ptransform = cv2.getPerspectiveTransform(np.float32(marker_centroids),np.float32([[46,318],[517,48],[670,317],[203,587]]))
     straight = cv2.warpPerspective(image_bw, ptransform, (maze_mask.shape[1], maze_mask.shape[0]), flags = cv2.INTER_LINEAR)
     straight_clean = np.bitwise_and(straight,maze_mask)
     #cv2.imshow('straightened', straight_clean)
@@ -259,7 +267,7 @@ def init_stewart():
     
     
     
-    return Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0,[40,35,42])
+    return Stewart.Stewart(base_anchors, platform_anchors, leg, arm, servo_orientations, h0,[38,46,41])
 
 
 def listener():
@@ -298,6 +306,6 @@ if __name__ == '__main__':
     global maze_mask_eroded
     maze_mask_eroded = cv2.erode(maze_mask,np.ones((5,5), np.uint8), iterations = 6) #TODO: tune
     global past_errs
-    past_errs = deque(np.float32([0,0]),3)
+    past_errs = deque(np.float32([0,0]),6)
     global target
     listener()

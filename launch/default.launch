@@ -1,0 +1,5 @@
+<launch>
+    <node name="picam_publisher" pkg="project_theseus" type="image_publisher.py"/>
+    <node name="frame_processor" pkg="project_theseus" type="process_frames.py"/>
+    <node name="target_transmitter" pkg="project_theseus" type="send_target_from_image.py"/>
+</launch>
